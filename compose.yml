@@ -1,0 +1,102 @@
+services:
+  php:
+    build:
+      context: .
+      dockerfile: .docker/php/Dockerfile
+      target: dev
+    container_name: gryf-php
+    restart: on-failure
+    working_dir: /var/www/backend
+    volumes:
+      - ./backend:/var/www/backend
+      - ./.docker/php/php.ini:/usr/local/etc/php/conf.d/custom.ini:ro
+    environment:
+      APP_ENV: dev
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - postgres
+      - valkey
+    networks:
+      - gryf-network
+    tty: true
+
+  nginx:
+    image: nginx:stable-alpine
+    container_name: gryf-nginx
+    restart: on-failure
+    ports:
+      - "80:80"
+    volumes:
+      - ./backend:/var/www/backend:ro
+      - ./frontend:/var/www/frontend:ro
+      - ./.docker/nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      - php
+    networks:
+      - gryf-network
+
+  postgres:
+    image: postgis/postgis:14-3.5-alpine
+    container_name: gryf-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gryf
+      POSTGRES_PASSWORD: gryf_pass
+      POSTGRES_DB: gryf
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - gryf-network
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: gryf-valkey
+    restart: on-failure
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey_data:/data
+    networks:
+      - gryf-network
+
+  valhalla:
+    image: ghcr.io/valhalla/valhalla-scripted:latest
+    container_name: gryf-valhalla
+    restart: on-failure
+    ports:
+      - "8002:8002"
+    volumes:
+      - valhalla_tiles:/custom_files
+    environment:
+      tile_urls: "https://download.geofabrik.de/europe/poland-latest.osm.pbf"
+      serve_tiles: "True"
+      build_admins: "True"
+      build_time_zones: "True"
+      build_elevation: "False"
+    networks:
+      - gryf-network
+
+  martin:
+    image: ghcr.io/maplibre/martin:1.4.0
+    container_name: gryf-martin
+    restart: on-failure
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://gryf:gryf_pass@postgres/gryf
+    depends_on:
+      - postgres
+    networks:
+      - gryf-network
+
+volumes:
+  postgres_data:
+  valkey_data:
+  valhalla_tiles:
+
+networks:
+  gryf-network:
+    driver: bridge
