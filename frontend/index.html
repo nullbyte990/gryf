@@ -9,13 +9,89 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         #map { width: 100vw; height: 100vh; }
+        .search-panel {
+            position: fixed;
+            top: 16px;
+            left: 50%;
+            z-index: 1;
+            width: min(420px, calc(100vw - 32px));
+            transform: translateX(-50%);
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+        #location-search {
+            width: 100%;
+            height: 44px;
+            padding: 0 14px;
+            border: 1px solid rgba(20, 25, 35, 0.18);
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+            color: #111827;
+            font-size: 15px;
+            outline: none;
+        }
+        #location-search:focus {
+            border-color: #2563eb;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), 0 0 0 3px rgba(37, 99, 235, 0.2);
+        }
+        #search-results {
+            display: none;
+            max-height: 260px;
+            margin-top: 8px;
+            overflow-y: auto;
+            border: 1px solid rgba(20, 25, 35, 0.14);
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.2);
+        }
+        #search-results.visible { display: block; }
+        .search-result {
+            width: 100%;
+            padding: 10px 12px;
+            border: 0;
+            border-bottom: 1px solid #e5e7eb;
+            background: transparent;
+            color: #111827;
+            cursor: pointer;
+            font: inherit;
+            text-align: left;
+        }
+        .search-result:last-child { border-bottom: 0; }
+        .search-result:hover,
+        .search-result:focus {
+            background: #f3f4f6;
+            outline: none;
+        }
+        .search-result strong {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .search-result span {
+            display: block;
+            margin-top: 2px;
+            color: #4b5563;
+            font-size: 12px;
+            line-height: 1.3;
+        }
     </style>
 </head>
 <body>
+    <div class="search-panel">
+        <input id="location-search" type="search" placeholder="Szukaj lokalizacji" autocomplete="off">
+        <div id="search-results" role="listbox"></div>
+    </div>
     <div id="map"></div>
     <script>
         const MARTIN_URL = 'http://localhost:3000';
-        const STYLE_URL = 'https://raw.githubusercontent.com/maputnik/osm-liberty/gh-pages/style.json';
+        const PHOTON_URL = '/api/';
+        const STYLE_URL = './style.json';
+        const searchInput = document.getElementById('location-search');
+        const searchResults = document.getElementById('search-results');
+        let map;
+        let marker;
+        let searchTimeout;
+        let activeSearchController;
 
         fetch(STYLE_URL)
             .then(r => r.json())
@@ -28,13 +104,134 @@
                         maxzoom: 14
                     };
                 }
-                new maplibregl.Map({
+                map = new maplibregl.Map({
                     container: 'map',
                     style: style,
                     center: [19.14, 51.92],
                     zoom: 7
                 });
             });
+
+        function formatFeature(feature) {
+            const props = feature.properties || {};
+            const title = props.name || props.street || props.city || props.county || props.state || 'Nieznana lokalizacja';
+            const details = [
+                props.street && props.housenumber ? `${props.street} ${props.housenumber}` : props.street,
+                props.city,
+                props.county,
+                props.state,
+                props.country
+            ].filter(Boolean);
+
+            return { title, details: [...new Set(details)].join(', ') };
+        }
+
+        function clearResults() {
+            searchResults.innerHTML = '';
+            searchResults.classList.remove('visible');
+        }
+
+        function selectFeature(feature) {
+            const coordinates = feature.geometry && feature.geometry.coordinates;
+
+            if (!coordinates || coordinates.length < 2 || !map) {
+                return;
+            }
+
+            const [lng, lat] = coordinates;
+            const label = formatFeature(feature);
+            searchInput.value = label.details ? `${label.title}, ${label.details}` : label.title;
+            clearResults();
+
+            map.flyTo({ center: [lng, lat], zoom: 14, essential: true });
+
+            if (marker) {
+                marker.setLngLat([lng, lat]);
+            } else {
+                marker = new maplibregl.Marker().setLngLat([lng, lat]).addTo(map);
+            }
+        }
+
+        function renderResults(features) {
+            searchResults.innerHTML = '';
+
+            if (!features.length) {
+                clearResults();
+                return;
+            }
+
+            features.forEach(feature => {
+                const label = formatFeature(feature);
+                const button = document.createElement('button');
+                const title = document.createElement('strong');
+                button.type = 'button';
+                button.className = 'search-result';
+                button.setAttribute('role', 'option');
+                title.textContent = label.title;
+                button.appendChild(title);
+
+                if (label.details) {
+                    const details = document.createElement('span');
+                    details.textContent = label.details;
+                    button.appendChild(details);
+                }
+
+                button.addEventListener('click', () => selectFeature(feature));
+                searchResults.appendChild(button);
+            });
+
+            searchResults.classList.add('visible');
+        }
+
+        function searchLocation(query) {
+            if (activeSearchController) {
+                activeSearchController.abort();
+            }
+
+            activeSearchController = new AbortController();
+            const url = `${PHOTON_URL}?q=${encodeURIComponent(query)}&limit=5`;
+
+            fetch(url, { signal: activeSearchController.signal })
+                .then(response => response.json())
+                .then(data => renderResults(data.features || []))
+                .catch(error => {
+                    if (error.name !== 'AbortError') {
+                        clearResults();
+                    }
+                });
+        }
+
+        searchInput.addEventListener('input', () => {
+            const query = searchInput.value.trim();
+            clearTimeout(searchTimeout);
+
+            if (query.length < 2) {
+                clearResults();
+                return;
+            }
+
+            searchTimeout = setTimeout(() => searchLocation(query), 250);
+        });
+
+        searchInput.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                const firstResult = searchResults.querySelector('.search-result');
+                if (firstResult) {
+                    event.preventDefault();
+                    firstResult.click();
+                }
+            }
+
+            if (event.key === 'Escape') {
+                clearResults();
+            }
+        });
+
+        document.addEventListener('click', event => {
+            if (!event.target.closest('.search-panel')) {
+                clearResults();
+            }
+        });
     </script>
 </body>
 </html>

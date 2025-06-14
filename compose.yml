@@ -33,6 +33,7 @@ services:
       - ./.docker/nginx/conf.d:/etc/nginx/conf.d:ro
     depends_on:
       - php
+      - photon
     networks:
       - gryf-network
 
