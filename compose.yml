@@ -79,6 +79,29 @@ services:
     networks:
       - gryf-network
 
+  photon:
+    build:
+      context: .
+      dockerfile: .docker/photon/Dockerfile
+      args:
+        PHOTON_VERSION: 1.2.0
+    container_name: gryf-photon
+    restart: on-failure
+    ports:
+      - "2322:2322"
+    environment:
+      PHOTON_REGION: ${PHOTON_REGION:-PL}
+      PHOTON_COUNTRY_CODES: ${PHOTON_COUNTRY_CODES:-PL}
+      PHOTON_LANGUAGES: ${PHOTON_LANGUAGES:-pl,en}
+      PHOTON_IMPORT_ON_START: ${PHOTON_IMPORT_ON_START:-true}
+      PHOTON_IMPORT_JAVA_OPTS: ${PHOTON_IMPORT_JAVA_OPTS:--Xmx4G}
+      PHOTON_DUMP_URL: ${PHOTON_DUMP_URL:-https://download1.graphhopper.com/public/europe/poland/photon-dump-poland-1.0-latest.jsonl.zst}
+      PHOTON_REQUIRE_DATA: "true"
+    volumes:
+      - photon_data:/photon
+    networks:
+      - gryf-network
+
   martin:
     image: ghcr.io/maplibre/martin:1.4.0
     container_name: gryf-martin
@@ -99,6 +122,7 @@ volumes:
   postgres_data:
   valkey_data:
   valhalla_tiles:
+  photon_data:
 
 networks:
   gryf-network:

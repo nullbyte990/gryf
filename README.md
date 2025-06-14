@@ -11,6 +11,7 @@ Aplikacja geoinformacyjna oparta na mapach wektorowych OpenMapTiles. Backend w S
 | Baza danych | PostgreSQL 14 + PostGIS 3.5 | `localhost:5432` |
 | Kafelki wektorowe | Martin 1.4.0 | `localhost:3000` |
 | Routing | Valhalla (OSM Polska) | `localhost:8002` |
+| Geokoder | Photon 1.2.0 | `localhost:2322` |
 | Cache | Valkey 8 (Redis-compatible) | `localhost:6379` |
 
 ## Wymagania
@@ -58,6 +59,37 @@ docker compose restart martin
 ```
 
 Kafelki dostępne pod `http://localhost:3000/poland/{z}/{x}/{y}`, katalog źródeł: `http://localhost:3000/catalog`.
+
+## Geokoder Photon
+
+Photon działa jako lokalny silnik geokodowania na `http://localhost:2322`. Backend ma domyślnie ustawiony adres wewnętrzny `PHOTON_URL=http://photon:2322`.
+
+Kontener ma lokalny mechanizm podobny do obrazów z obsługą `REGION`: `PHOTON_REGION=PL` i `PHOTON_COUNTRY_CODES=PL` są domyślne, a entrypoint odrzuci inne regiony. Dzięki temu nie da się przypadkowo zainicjalizować Photona danymi świata ani Europy.
+
+Przy pierwszym uruchomieniu pusty wolumen `photon_data` zostanie automatycznie zainicjalizowany z dumpa GraphHoppera dla Polski. Domyślny dump to `https://download1.graphhopper.com/public/europe/poland/photon-dump-poland-1.0-latest.jsonl.zst`; można go nadpisać zmienną `PHOTON_DUMP_URL`.
+
+Pierwsze uruchomienie:
+
+```bash
+docker compose up -d photon
+```
+
+Entrypoint pobiera skompresowany dump do tymczasowego katalogu w wolumenie, rozpakowuje go przez `zstd` i importuje do tymczasowej bazy Photona. Dopiero po udanym imporcie przenosi gotowy katalog `photon_data` na właściwe miejsce i zapisuje marker `.gryf-import-complete`. Dzięki temu przerwany albo nieudany import nie zostawia pustej bazy, która blokowałaby kolejną próbę.
+
+Po udanym imporcie kolejne uruchomienia pomijają import i startują serwer od razu. Jeśli import nie utworzy danych, kontener kończy się błędem, a `restart: on-failure` ponowi próbę.
+
+Przy zmianie entrypointa lub obrazu Photona odbuduj usługę:
+
+```bash
+docker compose up -d --build --force-recreate photon
+```
+
+API wyszukiwania:
+
+```bash
+curl 'http://localhost:2322/api?q=Warszawa&limit=5'
+curl 'http://localhost:2322/reverse?lon=21.0122&lat=52.2297'
+```
 
 ## Komendy Makefile
 
