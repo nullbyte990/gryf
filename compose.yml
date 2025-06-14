@@ -87,6 +87,9 @@ services:
       - "3000:3000"
     environment:
       DATABASE_URL: postgres://gryf:gryf_pass@postgres/gryf
+    command: ["/maps"]
+    volumes:
+      - ./maps:/maps:ro
     depends_on:
       - postgres
     networks:

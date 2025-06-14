@@ -1,0 +1,13 @@
+# OSM source data
+*.osm.pbf
+
+# Generated tiles
+*.mbtiles
+
+# Geocoder databases
+*.sqlite
+
+# Downloaded geodata
+coastline/
+landcover/
+elevation/

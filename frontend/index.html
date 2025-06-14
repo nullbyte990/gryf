@@ -1,11 +1,40 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gryf Frontend</title>
+    <title>Gryf</title>
+    <link href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" rel="stylesheet">
+    <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        #map { width: 100vw; height: 100vh; }
+    </style>
 </head>
 <body>
-    <h1>Hello World</h1>
+    <div id="map"></div>
+    <script>
+        const MARTIN_URL = 'http://localhost:3000';
+        const STYLE_URL = 'https://raw.githubusercontent.com/maputnik/osm-liberty/gh-pages/style.json';
+
+        fetch(STYLE_URL)
+            .then(r => r.json())
+            .then(style => {
+                if (style.sources && style.sources['openmaptiles']) {
+                    style.sources['openmaptiles'] = {
+                        type: 'vector',
+                        tiles: [`${MARTIN_URL}/poland/{z}/{x}/{y}`],
+                        minzoom: 0,
+                        maxzoom: 14
+                    };
+                }
+                new maplibregl.Map({
+                    container: 'map',
+                    style: style,
+                    center: [19.14, 51.92],
+                    zoom: 7
+                });
+            });
+    </script>
 </body>
 </html>
