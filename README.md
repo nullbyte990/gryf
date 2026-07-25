@@ -112,7 +112,24 @@ BRouter wymaga segmentów routingu `.rd5`. Umieść pobrane segmenty w katalogu:
 routing/brouter/segments4
 ```
 
-Segmenty można pobrać z publicznego katalogu BRouter `segments4`. Dla Polski potrzebne będą pliki pokrywające interesujący obszar, np. `E15_N50.rd5`, `E20_N50.rd5`, zależnie od regionu trasy.
+Segmenty można pobrać z publicznego katalogu BRouter `segments4`. Dla całej Polski z małym buforem granicznym użyj skryptu:
+
+```bash
+sh routing/brouter/download-poland-rd5.sh
+```
+
+Skrypt pobiera kafle:
+
+```text
+E10_N45.rd5
+E10_N50.rd5
+E15_N45.rd5
+E15_N50.rd5
+E20_N45.rd5
+E20_N50.rd5
+E25_N45.rd5
+E25_N50.rd5
+```
 
 Po dodaniu segmentów uruchom usługę:
 
