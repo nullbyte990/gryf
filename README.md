@@ -8,7 +8,7 @@
                                                      +:         *%%#  :%%%#   .
                                         =%%%%%%%%%%%%%         =%%%  =%%%*   +%
                                       -+%%+--%%%%%%%#-        -%%%- *%%%+  -%%=
-                   .+-   -*:        -%%%%%%%%%%%%%%%%%%-     :%%%==%%%%: =%%%=
+                   .+-   -*:        -%%%%%%%%%%%%%%%%%%-     :%%%==%%%%: =%%%= 
                    -%%- *%%-         %+-+%%%%%%%%%%%%%%#-   :%%%**%%%+ +%%%%:
                     +%%-:%+           =++*%%%%%%%%%%%%%+ :%.#%%%%%%#=*%%%#-   .
                  :===*%%%%:               :%%%%%%%%%%%%+ #%%%%%%%###%%%#:.=+%%=
@@ -51,7 +51,8 @@ Aplikacja geoinformacyjna oparta na mapach wektorowych OpenMapTiles. Backend w S
 | Backend | PHP 8.4 / Symfony 8.0 | `backend.localhost:80` |
 | Baza danych | PostgreSQL 14 + PostGIS 3.5 | `localhost:5432` |
 | Kafelki wektorowe | Martin 1.4.0 | `localhost:3000` |
-| Routing | Valhalla (OSM Polska) | `localhost:8002` |
+| Routing drogowy | Valhalla (OSM Polska) | `localhost:8002` |
+| Routing terenowy/wodny | BRouter | `localhost:17777` |
 | Geokoder | Photon 1.2.0 | `localhost:2322` |
 | Cache | Valkey 8 (Redis-compatible) | `localhost:6379` |
 
@@ -100,6 +101,30 @@ docker compose restart martin
 ```
 
 Kafelki dostępne pod `http://localhost:3000/poland/{z}/{x}/{y}`, katalog źródeł: `http://localhost:3000/catalog`.
+
+## Routing BRouter
+
+BRouter działa jako lokalny silnik routingu HTTP na `http://localhost:17777`. Usługa jest przeznaczona głównie pod profile terenowe i wodne, których nie obsługuje obecna konfiguracja Valhalli.
+
+BRouter wymaga segmentów routingu `.rd5`. Umieść pobrane segmenty w katalogu:
+
+```bash
+routing/brouter/segments4
+```
+
+Segmenty można pobrać z publicznego katalogu BRouter `segments4`. Dla Polski potrzebne będą pliki pokrywające interesujący obszar, np. `E15_N50.rd5`, `E20_N50.rd5`, zależnie od regionu trasy.
+
+Po dodaniu segmentów uruchom usługę:
+
+```bash
+docker compose up -d brouter
+```
+
+Przykładowe zapytanie API:
+
+```bash
+curl 'http://localhost:17777/brouter?lonlats=21.385,50.929|21.515,50.975&profile=trekking&alternativeidx=0&format=geojson'
+```
 
 ## Geokoder Photon
 
