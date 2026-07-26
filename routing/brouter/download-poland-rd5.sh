@@ -18,22 +18,11 @@ E25_N50
 
 mkdir -p "$TARGET_DIR"
 
-if command -v curl >/dev/null 2>&1; then
-  fetch() {
-    url="$1"
-    output="$2"
-    curl --fail --location --show-error --output "$output" "$url"
-  }
-elif command -v wget >/dev/null 2>&1; then
-  fetch() {
-    url="$1"
-    output="$2"
-    wget --output-document="$output" "$url"
-  }
-else
-  echo "Error: curl or wget is required." >&2
-  exit 1
-fi
+fetch() {
+  url="$1"
+  output="$2"
+  wget --output-document="$output" "$url"
+}
 
 echo "Downloading BRouter RD5 segments to: $TARGET_DIR"
 
@@ -41,7 +30,6 @@ for segment in $SEGMENTS; do
   file="${segment}.rd5"
   url="${BASE_URL}/${file}"
   output="${TARGET_DIR}/${file}"
-  tmp="${output}.tmp"
 
   if [ -s "$output" ]; then
     echo "Skipping existing segment: $file"
@@ -49,9 +37,7 @@ for segment in $SEGMENTS; do
   fi
 
   echo "Downloading: $file"
-  rm -f "$tmp"
-  fetch "$url" "$tmp"
-  mv "$tmp" "$output"
+  fetch "$url" "$output"
 done
 
 echo "Done. Restart BRouter if it is already running: docker compose restart brouter"
