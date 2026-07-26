@@ -81,6 +81,18 @@ services:
     networks:
       - gryf-network
 
+  brouter:
+    build:
+      context: https://github.com/abrensch/brouter.git#master
+    container_name: gryf-brouter
+    restart: on-failure
+    ports:
+      - "17777:17777"
+    volumes:
+      - ./routing/brouter/segments4:/segments4:ro
+    networks:
+      - gryf-network
+
   photon:
     build:
       context: .
