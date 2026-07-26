@@ -30,6 +30,53 @@ EIO_SPLIT_MAX_DEPTH="${EIO_SPLIT_MAX_DEPTH:-6}"
 log(){ printf '%s\n' "$*" >&2; }
 die(){ log "ERROR: $*"; exit 1; }
 
+usage() {
+  cat <<EOF >&2
+Usage: $0 [województwo]
+
+Generates vector tiles (mbtiles) for Poland or a single voivodeship.
+
+Examples:
+  $0                  # whole Poland -> poland.mbtiles
+  $0 pomorskie        # Pomorskie -> pomorskie.mbtiles
+  $0 śląskie          # Śląskie -> slaskie.mbtiles
+  $0 slaskie          # Śląskie -> slaskie.mbtiles (ASCII form accepted)
+EOF
+}
+
+# Maps a voivodeship name (with or without Polish diacritics, any case) to
+# a safe ASCII file suffix and a bounding box in degrees (min_lon min_lat max_lon max_lat).
+# Keep these in sync with the official OSM Poland extract boundaries.
+voivodeship_to_bbox() {
+  local name
+  name="$(printf '%s' "$1" | sed \
+    -e 's/Ą/ą/g' -e 's/Ć/ć/g' -e 's/Ę/ę/g' -e 's/Ł/ł/g' \
+    -e 's/Ń/ń/g' -e 's/Ó/ó/g' -e 's/Ś/ś/g' -e 's/Ź/ź/g' -e 's/Ż/ż/g' \
+    -e 's/ą/a/g' -e 's/ć/c/g' -e 's/ę/e/g' -e 's/ł/l/g' \
+    -e 's/ń/n/g' -e 's/ó/o/g' -e 's/ś/s/g' -e 's/ź/z/g' -e 's/ż/z/g' \
+    -e 's/[^a-zA-Z-]//g' | tr '[:upper:]' '[:lower:]')"
+
+  case "$name" in
+    dolnoslaskie|dolnoslask)        echo "dolnoslaskie 14.8 50.2 17.8 51.8" ;;
+    kujawsko-pomorskie|kujpom)      echo "kujawsko-pomorskie 17.2 52.3 19.8 54.0" ;;
+    lubelskie)                      echo "lubelskie 21.8 50.4 24.2 52.3" ;;
+    lubuskie)                       echo "lubuskie 14.6 51.5 17.8 53.6" ;;
+    lodzkie|lodzskie)               echo "lodzkie 18.0 51.0 20.7 52.4" ;;
+    malopolskie)                    echo "malopolskie 19.2 49.1 21.6 50.6" ;;
+    mazowieckie)                    echo "mazowieckie 19.3 51.1 23.1 53.5" ;;
+    opolskie)                       echo "opolskie 16.8 49.9 18.7 51.1" ;;
+    podkarpackie)                   echo "podkarpackie 21.0 48.9 23.6 50.9" ;;
+    podlaskie)                      echo "podlaskie 21.8 52.4 24.2 54.4" ;;
+    pomorskie)                      echo "pomorskie 16.8 53.3 19.7 54.9" ;;
+    slaskie|slonskie)               echo "slaskie 18.0 49.4 19.9 51.1" ;;
+    swietokrzyskie|swietokrzysk)    echo "swietokrzyskie 19.4 50.1 21.8 51.4" ;;
+    warminsko-mazurskie|warmaz)     echo "warminsko-mazurskie 19.3 53.2 22.8 54.4" ;;
+    wielkopolskie)                  echo "wielkopolskie 15.0 51.1 19.1 53.6" ;;
+    zachodniopomorskie|zachpom)     echo "zachodniopomorskie 14.1 52.5 17.1 54.5" ;;
+    *)                              return 1 ;;
+  esac
+}
+
 CURL_OPTS=(
   -L --fail
   --retry 5
@@ -205,7 +252,7 @@ build_contours() {
   [ -f "$pbf" ] || die "Missing OSM extract for contour generation: $pbf"
 
   local bbox
-  bbox="$(osmium fileinfo -e -g header.boxes "$pbf" | head -n 1)"
+  bbox="$(osmium fileinfo -e -g data.bbox "$pbf" | head -n 1)"
   [ -n "$bbox" ] || die "Unable to read bbox from $pbf"
 
   local min_lon min_lat max_lon max_lat
@@ -267,6 +314,35 @@ require_cmd gdal_translate
 require_cmd eio
 
 cd "$SCRIPT_DIR"
+
+REGION_ARG="${1:-}"
+
+if [ "$REGION_ARG" = "-h" ] || [ "$REGION_ARG" = "--help" ]; then
+  usage
+  exit 0
+fi
+
+REGION="poland"
+PBF="poland-latest.osm.pbf"
+MBTILES="poland.mbtiles"
+BBOX=""
+
+if [ -n "$REGION_ARG" ]; then
+  if [ "$#" -gt 1 ]; then
+    usage
+    die "Too many arguments"
+  fi
+
+  resolved="$(voivodeship_to_bbox "$REGION_ARG")" || {
+    die "Unknown voivodeship: '$REGION_ARG'. Valid names (examples): dolnoslaskie, kujawsko-pomorskie, lubelskie, lubuskie, lodzkie, malopolskie, mazowieckie, opolskie, podkarpackie, podlaskie, pomorskie, slaskie, swietokrzyskie, warminsko-mazurskie, wielkopolskie, zachodniopomorskie. Polish diacritics are accepted."
+  }
+
+  REGION="$(printf '%s' "$resolved" | awk '{print $1}')"
+  BBOX="$(printf '%s' "$resolved" | awk '{print $2","$3","$4","$5}')"
+  PBF="${REGION}-latest.osm.pbf"
+  MBTILES="${REGION}.mbtiles"
+fi
+
 ensure_requirements
 prepare_elevation_dirs
 
@@ -275,12 +351,30 @@ fetch_natural_earth_dataset "cultural/ne_10m_urban_areas.zip"                   
 fetch_natural_earth_dataset "physical/ne_10m_antarctic_ice_shelves_polys.zip"                     "${LANDCOVER_DIR}/ne_10m_antarctic_ice_shelves_polys"    "ne_10m_antarctic_ice_shelves_polys"    "Natural Earth antarctic ice shelves"
 fetch_natural_earth_dataset "physical/ne_10m_glaciated_areas.zip"                                 "${LANDCOVER_DIR}/ne_10m_glaciated_areas"                "ne_10m_glaciated_areas"                "Natural Earth glaciated areas"
 
-PBF="poland-latest.osm.pbf"
-MBTILES="poland.mbtiles"
+# Always start from the full country extract; crop afterwards when a region is requested.
+SOURCE_PBF="poland-latest.osm.pbf"
 
-wget -N "${BASE_URL}/${PBF}"
-build_contours "$PBF" "poland"
-tilemaker --input="${PBF}" --output="${MBTILES}" --config="${CONFIG}" --process="${PROCESS}"
+log "Downloading source extract: ${SOURCE_PBF}"
+wget -N "${BASE_URL}/${SOURCE_PBF}"
+
+if [ -n "$BBOX" ]; then
+  log "Extracting region '${REGION}' from ${SOURCE_PBF} using bbox=${BBOX}"
+  osmium extract --bbox="$BBOX" --strategy=complete_ways --output="$PBF" --overwrite "$SOURCE_PBF" || die "osmium extract failed for ${REGION}"
+fi
+
+build_contours "$PBF" "$REGION"
+
+TILEMAKER_ARGS=(
+  --input="${PBF}"
+  --output="${MBTILES}"
+  --config="${CONFIG}"
+  --process="${PROCESS}"
+)
+# The cropped PBF doesn't carry a bbox header, so we must supply one for
+# tilemaker to know which tiles to generate and how to read the shapefiles.
+[ -n "$BBOX" ] && TILEMAKER_ARGS+=(--bbox="$BBOX")
+
+tilemaker "${TILEMAKER_ARGS[@]}"
 validate_contour_layer_in_mbtiles "$MBTILES"
 
 log "Done: ${SCRIPT_DIR}/${MBTILES}"

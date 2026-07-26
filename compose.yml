@@ -72,8 +72,9 @@ services:
     volumes:
       - valhalla_tiles:/custom_files
     environment:
-      tile_urls: "https://download.geofabrik.de/europe/poland-latest.osm.pbf"
       serve_tiles: "True"
+      force_rebuild: "True"
+      use_tiles_ignore_pbf: "False"
       build_admins: "True"
       build_time_zones: "True"
       build_elevation: "False"

@@ -34,6 +34,45 @@
             border-color: #2563eb;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), 0 0 0 3px rgba(37, 99, 235, 0.2);
         }
+        #tile-source {
+            width: 100%;
+            height: 40px;
+            margin-top: 8px;
+            padding: 0 14px;
+            border: 1px solid rgba(20, 25, 35, 0.18);
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+            color: #111827;
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%236b7280' viewBox='0 0 16 16'%3E%3Cpath d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 14px;
+        }
+        #tile-source:disabled {
+            background-color: #f3f4f6;
+            color: #6b7280;
+            cursor: not-allowed;
+        }
+        #tile-source:focus {
+            border-color: #2563eb;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), 0 0 0 3px rgba(37, 99, 235, 0.2);
+        }
+        .tile-source-error {
+            margin-top: 6px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            background: #fee2e2;
+            color: #991b1b;
+            font-size: 13px;
+            display: none;
+        }
+        .tile-source-error.visible { display: block; }
         #search-results {
             display: none;
             max-height: 260px;
@@ -79,6 +118,10 @@
 <body>
     <div class="search-panel">
         <input id="location-search" type="search" placeholder="Szukaj lokalizacji" autocomplete="off">
+        <select id="tile-source" disabled>
+            <option value="">Ładowanie źródła mapy...</option>
+        </select>
+        <div id="tile-source-error" class="tile-source-error"></div>
         <div id="search-results" role="listbox"></div>
     </div>
     <div id="map"></div>
@@ -86,20 +129,112 @@
         const MARTIN_URL = 'http://localhost:3000';
         const PHOTON_URL = '/api/';
         const STYLE_URL = './style.json';
+        const CATALOG_URL = `${MARTIN_URL}/catalog`;
+        const STORAGE_KEY = 'gryf-tile-source';
         const searchInput = document.getElementById('location-search');
         const searchResults = document.getElementById('search-results');
+        const tileSourceSelect = document.getElementById('tile-source');
+        const tileSourceError = document.getElementById('tile-source-error');
         let map;
         let marker;
         let searchTimeout;
         let activeSearchController;
+        let availableSources = [];
 
-        fetch(STYLE_URL)
-            .then(r => r.json())
-            .then(style => {
+        const VOIVODESHIP_LABELS = {
+            'poland': 'Cała Polska',
+            'dolnoslaskie': 'Dolnośląskie',
+            'kujawsko-pomorskie': 'Kujawsko-Pomorskie',
+            'lubelskie': 'Lubelskie',
+            'lubuskie': 'Lubuskie',
+            'lodzkie': 'Łódzkie',
+            'malopolskie': 'Małopolskie',
+            'mazowieckie': 'Mazowieckie',
+            'opolskie': 'Opolskie',
+            'podkarpackie': 'Podkarpackie',
+            'podlaskie': 'Podlaskie',
+            'pomorskie': 'Pomorskie',
+            'slaskie': 'Śląskie',
+            'swietokrzyskie': 'Świętokrzyskie',
+            'warminsko-mazurskie': 'Warmińsko-Mazurskie',
+            'wielkopolskie': 'Wielkopolskie',
+            'zachodniopomorskie': 'Zachodniopomorskie'
+        };
+
+        function getTileSources(catalog) {
+            return Object.entries(catalog.tiles || {})
+                .filter(([key, value]) => {
+                    const desc = value.description || '';
+                    return !desc.startsWith('tiger.');
+                })
+                .map(([key]) => key)
+                .sort((a, b) => a.localeCompare(b, 'pl'));
+        }
+
+        function buildTileSourceSelect(sources) {
+            availableSources = sources;
+            tileSourceSelect.innerHTML = '';
+            if (sources.length === 0) {
+                tileSourceSelect.innerHTML = '<option value="">Brak dostępnych źródeł</option>';
+                tileSourceSelect.disabled = true;
+                return;
+            }
+            sources.forEach(source => {
+                const option = document.createElement('option');
+                option.value = source;
+                option.textContent = VOIVODESHIP_LABELS[source] || source;
+                tileSourceSelect.appendChild(option);
+            });
+            tileSourceSelect.disabled = false;
+        }
+
+        function resolveDefaultSource(sources) {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved && sources.includes(saved)) {
+                return saved;
+            }
+            if (sources.includes('poland')) {
+                return 'poland';
+            }
+            return sources[0] || '';
+        }
+
+        function updateTileSource(sourceName) {
+            if (!sourceName || !map) return;
+            const source = map.getSource('openmaptiles');
+            if (source && source.setTiles) {
+                source.setTiles([`${MARTIN_URL}/${sourceName}/{z}/{x}/{y}`]);
+                map.triggerRepaint();
+            }
+            localStorage.setItem(STORAGE_KEY, sourceName);
+        }
+
+        function showTileSourceError(message) {
+            tileSourceError.textContent = message;
+            tileSourceError.classList.add('visible');
+        }
+
+        Promise.all([fetch(STYLE_URL), fetch(CATALOG_URL)])
+            .then(async ([styleRes, catalogRes]) => {
+                const style = await styleRes.json();
+                let sources = [];
+                try {
+                    const catalog = await catalogRes.json();
+                    sources = getTileSources(catalog);
+                } catch (e) {
+                    console.error('Failed to load tile catalog', e);
+                    showTileSourceError('Nie udało się pobrać listy dostępnych źródeł mapy.');
+                }
+                if (sources.length === 0) {
+                    sources = ['poland'];
+                }
+                buildTileSourceSelect(sources);
+                const selectedSource = resolveDefaultSource(sources);
+                tileSourceSelect.value = selectedSource;
                 if (style.sources && style.sources['openmaptiles']) {
                     style.sources['openmaptiles'] = {
                         type: 'vector',
-                        tiles: [`${MARTIN_URL}/poland/{z}/{x}/{y}`],
+                        tiles: [`${MARTIN_URL}/${selectedSource}/{z}/{x}/{y}`],
                         minzoom: 0,
                         maxzoom: 14
                     };
@@ -110,7 +245,18 @@
                     center: [19.14, 51.92],
                     zoom: 7
                 });
+            })
+            .catch(error => {
+                console.error('Failed to initialize map', error);
+                showTileSourceError('Nie udało się załadować mapy.');
             });
+
+        tileSourceSelect.addEventListener('change', () => {
+            const selected = tileSourceSelect.value;
+            if (selected && availableSources.includes(selected)) {
+                updateTileSource(selected);
+            }
+        });
 
         function formatFeature(feature) {
             const props = feature.properties || {};
